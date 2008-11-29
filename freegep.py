@@ -16,7 +16,6 @@ class freeGEP:
     _funcArgNumList= []
     _terminalList = []
     _constantList = []
-    _constantNameList = []
     _chromosomeList = []
     _bestChromosome =''
     _bestFitness = 0
@@ -25,7 +24,8 @@ class freeGEP:
     _M = 1000.0
     _rateMutation = 0.3
     _rateInversion = 0.2
-    _rateOneRecombine=0.2
+    _rateOneRecombine=0.4
+    _rateTwoRecombine=0.2
     _rateIS = 0.1
     _rateRIS = 0.1
     _rateConstant = 0.3
@@ -39,19 +39,20 @@ class freeGEP:
     def loadfromfile(self, filename) :
         fh = file(filename,'r')
         lines = fh.readlines()
-        self._dataset = []
+        dataset = []
         for line in lines:
             if len(line) > 1:
                 rowset = line.split()
                 introwset = map(float,rowset)
-                self._dataset.append(introwset)
+                dataset.append(introwset)
         fh.close()
+        self.load(dataset)
     
     # load dataset
     # @param  dataset: the dataset to load
     def load(self, dataset):
         self._dataset=dataset
-    
+                
     # add custom function( or operation) to gene expression    
     # @param func : the function to add, like 'def add(args) : return args[0]+args[1]'
     # @param funcName: the name of the function
@@ -68,9 +69,11 @@ class freeGEP:
     def addTerminal(self, term) :
         self._terminalList.append(term)
     
-    def addConstant(self, constant, constName):
+    def addConstant(self, constant):
         self._constantList.append(constant)
-        self._constantNameList.append(constName)
+        
+    def addConstants(self, constants):
+        map(self.addConstant, constants)
     
     # initialize the chromosomes
     # @param head: the length of the head of chromosomes            
@@ -78,14 +81,18 @@ class freeGEP:
        self._head = head
        self._tail = head*(self._funcMaxArg-1)+1
        self._chromosomeLen = self._head + self._tail
+       self._autofillTerminals()
        self._chromosomeList = []
        for i in range(num) :
            chromosome = ''
            #pdb.set_trace()
            for h in range(self._head):
                chromosome += self._randGenFuncAndTerm()
+               chromosome += '.'
            for t in range(self._tail):
                chromosome += self._randGenTerminal()
+               if t < self._tail-1 :
+                   chromosome += '.'         
            self._chromosomeList.append(chromosome)
     
     def printChromosomes(self) :
@@ -133,6 +140,8 @@ class freeGEP:
             self._transRIS()
             print >>self._logfile,'one-point recombination -----------'
             self._onePointRecombination()
+            print >>self._logfile,'two-point recombination -----------'
+            self._twoPointsRecombination()
 
             self._chromosomeList.append(self._bestChromosome)
             print >>self._logfile,'best '+self._bestChromosome+' '+str(self._bestFitness)
@@ -146,7 +155,14 @@ class freeGEP:
 
     def closeLogFile(self):
         self._logfile.close()
-        
+    
+    def _autofillTerminals(self):
+        if len(self._dataset) == 0 :
+            return 
+        if len(self._terminalList) < len(self._dataset[0])-1 :
+            for i in range(len(self._dataset[0])-len(self._terminalList)-1):
+                self.addTerminal('x'+str(i))
+
     # ++abb
     def _evaluate(self, exp, row) :
         op = exp[0]
@@ -159,19 +175,19 @@ class freeGEP:
             for i in range(funcNumArg):
                 args.append(self._evaluate(exp,row))
             return func(args)
-        elif op in self._constantNameList:
-            constIndex = self._constantNameList.index(op)
+        elif op[0] == '#' :
+            constIndex = int(op[1:])
             return self._constantList[constIndex]
         else :
-            termIndex = self._terminalList.index(op)
+            termIndex = self._terminalList.index(op)    
             return row[termIndex]
 
     def _decode(self,chromosome) :
-        chrlist = list(chromosome)
+        chrlist = chromosome.split('.')
         layers = self._decodeSplitLayers(chrlist)
         preExp = self._decodeGenPreExp(layers,0)
         #print preExp
-        return list(preExp)
+        return preExp.split('.')
 
     def _decodeSplitLayers(self, chrlist) :
         layers =[]
@@ -200,6 +216,7 @@ class freeGEP:
             return ''
         ret = layer[0]
         for i in range(self._getNumArg(layer[0])):
+            ret += '.'
             ret += self._decodeGenPreExp(layers, layerindex+1)
         del layer[0]
         return ret
@@ -218,16 +235,12 @@ class freeGEP:
             return self._funcNameList[r]
         else:
             return self._randGenTerminal()
-        #elif r < len(self._funcList)+len(self._constantList) :
-        #    return self._constantNameList[r-len(self._funcList)];
-        #else:
-        #    return self._terminalList[r-len(self._funcList)-len(self._constantList)]
 
     def _randGenTerminal(self):
         totalLen = len(self._terminalList)+len(self._constantList)
         r = self._rand.randint(0, totalLen-1 )
         if r < totalLen*self._rateConstant and len(self._constantList) > 0:
-            return self._constantNameList[r%len(self._constantList)]
+            return '#'+str(r%len(self._constantList))
         else:
             return self._terminalList[r%len(self._terminalList)] 
     
@@ -244,7 +257,7 @@ class freeGEP:
             idx = int(math.sqrt(r)) -1
             chromosome = self._fitnesses[fitkeys[idx]][0]
             newchromosomeList.append(chromosome)
-            print >>self._logfile,chromosome
+            # print >>self._logfile,chromosome
         self._chromosomeList = newchromosomeList
 
     def _mutation(self):
@@ -254,15 +267,15 @@ class freeGEP:
             if self._randomProb(self._rateMutation) == False:
                 newchromosomeList.append(self._chromosomeList[index])
             else:
-                chrlist = list(self._chromosomeList[index])
+                chrlist = self._chromosomeList[index].split('.')
                 for time in range(self._lenMutation) :
                     pos = self._rand.randint(0,self._chromosomeLen-1)
                     if pos < self._head:
                         chrlist[pos] = self._randGenFuncAndTerm()
                     else:
                         chrlist[pos] = self._randGenTerminal()
-                newchromosomeList.append(''.join(chrlist)) 
-            print >>self._logfile, newchromosomeList[-1]
+                newchromosomeList.append('.'.join(chrlist)) 
+            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
 
@@ -274,15 +287,41 @@ class freeGEP:
                 newchromosomeList.append(self._chromosomeList[index])
                 newchromosomeList.append(self._chromosomeList[index+1])
             else:
-                chrlist1 = list(self._chromosomeList[index])
-                chrlist2 = list(self._chromosomeList[index+1])
+                chrlist1 = self._chromosomeList[index].split('.')
+                chrlist2 = self._chromosomeList[index+1].split('.')
                 pos = self._rand.randint(1, self._chromosomeLen-2)
                 newchrlist1 = chrlist1[:pos]+chrlist2[pos:]
                 newchrlist2 = chrlist2[:pos]+chrlist1[pos:]
-                newchromosomeList.append(''.join(newchrlist1))
-                newchromosomeList.append(''.join(newchrlist2))
-            print >>self._logfile, newchromosomeList[-2]
-            print >>self._logfile, newchromosomeList[-1]
+                newchromosomeList.append('.'.join(newchrlist1))
+                newchromosomeList.append('.'.join(newchrlist2))
+            #print >>self._logfile, newchromosomeList[-2]
+            #print >>self._logfile, newchromosomeList[-1]
+            index += 2
+        while index < len(self._chromosomeList) :
+            newchromosomeList.append(self._chromosomeList[index])
+            index += 1
+        self._chromosomeList = newchromosomeList
+        
+    def _twoPointsRecombination(self):
+        index = 0
+        newchromosomeList =[]
+        while index < len(self._chromosomeList)-1 :
+            if self._randomProb(self._rateTwoRecombine) == False:
+                newchromosomeList.append(self._chromosomeList[index])
+                newchromosomeList.append(self._chromosomeList[index+1])
+            else:
+                chrlist1 = self._chromosomeList[index].split('.')
+                chrlist2 = self._chromosomeList[index+1].split('.')
+                pos1 = self._rand.randint(1, self._chromosomeLen-2)
+                pos2 = self._rand.randint(1, self._chromosomeLen-2)
+                pos1 = min(pos1,pos2)
+                pos2 = max(pos1,pos2)                
+                newchrlist1 = chrlist1[:pos1]+chrlist2[pos1:pos2]+chrlist1[pos2:]
+                newchrlist2 = chrlist2[:pos1]+chrlist1[pos1:pos2]+chrlist2[pos2:]
+                newchromosomeList.append('.'.join(newchrlist1))
+                newchromosomeList.append('.'.join(newchrlist2))
+            #print >>self._logfile, newchromosomeList[-2]
+            #print >>self._logfile, newchromosomeList[-1]
             index += 2
         while index < len(self._chromosomeList) :
             newchromosomeList.append(self._chromosomeList[index])
@@ -298,7 +337,7 @@ class freeGEP:
             else:
                 pos = self._rand.randint(0,self._chromosomeLen-self._lenInversion-1)
                 inverselen=self._lenInversion
-                chrlist = list(self._chromosomeList[index])
+                chrlist = self._chromosomeList[index].split('.')
                 if pos >= self._head-inverselen and pos < self._head :
                     if pos >= self._head-inverselen/2 :
                         pos=self._head
@@ -308,8 +347,8 @@ class freeGEP:
                     t = chrlist[pos+i]
                     chrlist[pos+i] = chrlist[pos+inverselen-i]
                     chrlist[pos+inverselen-i]=t
-                newchromosomeList.append(''.join(chrlist)) 
-            print >>self._logfile, newchromosomeList[-1]
+                newchromosomeList.append('.'.join(chrlist)) 
+            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
     
@@ -323,14 +362,14 @@ class freeGEP:
                 srcpos = self._rand.randint(0,self._chromosomeLen-self._lenTransposition-1)
                 destpos = self._rand.randint(1,self._head-1)
                 tranlen = self._lenTransposition
-                chrlist = list(self._chromosomeList[index])
+                chrlist = self._chromosomeList[index].split('.')
                 for i in range(tranlen) :
                     chrlist.insert(destpos+i,chrlist[srcpos+i])
                     if destpos <= srcpos:
                         srcpos-=1
                 del chrlist[self._head:self._head+tranlen]
-                newchromosomeList.append(''.join(chrlist))
-            print >>self._logfile, newchromosomeList[-1]
+                newchromosomeList.append('.'.join(chrlist))
+            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
     
@@ -343,7 +382,7 @@ class freeGEP:
             else:
                 srcpos = self._rand.randint(0,self._head-1)
                 tranlen= self._lenTransposition
-                chrlist = list(self._chromosomeList[index])
+                chrlist = self._chromosomeList[index].split('.')
                 while srcpos < self._head :
                     if chrlist[srcpos] in self._funcNameList:
                         break
@@ -353,8 +392,8 @@ class freeGEP:
                         chrlist.insert(i,chrlist[srcpos+i])
                         srcpos-=1
                     del chrlist[self._head:self._head+tranlen]
-                newchromosomeList.append(''.join(chrlist))
-            print >>self._logfile, newchromosomeList[-1]
+                newchromosomeList.append('.'.join(chrlist))
+            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
 
@@ -390,8 +429,8 @@ if __name__ == '__main__' :
     myGep.loadfromfile('dataset.txt')
     myGep.addFunc(add,'+',2)
     myGep.addFunc(sub,'-',2)
-    #myGep.addFunc(mul,'*',2)
-    #myGep.addFunc(div,'/',2)
+    myGep.addFunc(mul,'*',2)
+    myGep.addFunc(div,'/',2)
     myGep.addTerminal('a')
     myGep.addTerminal('b')
     myGep.addTerminal('c')
