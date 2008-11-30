@@ -7,6 +7,7 @@ import pdb
 class freeGEP:
     _rand = random.Random()
     _dataset = []
+    _datadimension = 0
     _head = 0
     _tail = 0
     _chromosomeLen =0
@@ -14,7 +15,6 @@ class freeGEP:
     _funcList = []
     _funcNameList = []
     _funcArgNumList= []
-    _terminalList = []
     _constantList = []
     _chromosomeList = []
     _bestChromosome =''
@@ -52,6 +52,9 @@ class freeGEP:
     # @param  dataset: the dataset to load
     def load(self, dataset):
         self._dataset=dataset
+        if len(self._dataset) == 0 :
+           return
+        self._datadimension = len(self._dataset[0])
                 
     # add custom function( or operation) to gene expression    
     # @param func : the function to add, like 'def add(args) : return args[0]+args[1]'
@@ -63,11 +66,6 @@ class freeGEP:
         self._funcList.append(func)
         self._funcNameList.append(funcName)
         self._funcArgNumList.append(numArg)
-        
-    # add custom terminals to gene expression
-    # @param term: the name of the terminal
-    def addTerminal(self, term) :
-        self._terminalList.append(term)
     
     def addConstant(self, constant):
         self._constantList.append(constant)
@@ -77,11 +75,10 @@ class freeGEP:
     
     # initialize the chromosomes
     # @param head: the length of the head of chromosomes            
-    def initChromosomes(self, head, num):
+    def initChromosomes(self, head, num): 
        self._head = head
        self._tail = head*(self._funcMaxArg-1)+1
        self._chromosomeLen = self._head + self._tail
-       self._autofillTerminals()
        self._chromosomeList = []
        for i in range(num) :
            chromosome = ''
@@ -155,13 +152,6 @@ class freeGEP:
 
     def closeLogFile(self):
         self._logfile.close()
-    
-    def _autofillTerminals(self):
-        if len(self._dataset) == 0 :
-            return 
-        if len(self._terminalList) < len(self._dataset[0])-1 :
-            for i in range(len(self._dataset[0])-len(self._terminalList)-1):
-                self.addTerminal('x'+str(i))
 
     # ++abb
     def _evaluate(self, exp, row) :
@@ -179,7 +169,7 @@ class freeGEP:
             constIndex = int(op[1:])
             return self._constantList[constIndex]
         else :
-            termIndex = self._terminalList.index(op)    
+            termIndex = int(op[1:])
             return row[termIndex]
 
     def _decode(self,chromosome) :
@@ -229,7 +219,7 @@ class freeGEP:
             return 0
 
     def _randGenFuncAndTerm(self):
-        totalLen = len(self._funcList)+len(self._terminalList)
+        totalLen = len(self._funcList)+self._datadimension-1;
         r = self._rand.randint(0, totalLen-1)
         if r < len(self._funcList) :
             return self._funcNameList[r]
@@ -237,12 +227,12 @@ class freeGEP:
             return self._randGenTerminal()
 
     def _randGenTerminal(self):
-        totalLen = len(self._terminalList)+len(self._constantList)
+        totalLen = self._datadimension-1+len(self._constantList)
         r = self._rand.randint(0, totalLen-1 )
         if r < totalLen*self._rateConstant and len(self._constantList) > 0:
             return '#'+str(r%len(self._constantList))
         else:
-            return self._terminalList[r%len(self._terminalList)] 
+            return 'x'+str(r%(self._datadimension-1)) 
     
     def _select_replicate(self):
         fitkeys = self._fitnesses.keys()
@@ -431,15 +421,12 @@ if __name__ == '__main__' :
     myGep.addFunc(sub,'-',2)
     myGep.addFunc(mul,'*',2)
     myGep.addFunc(div,'/',2)
-    myGep.addTerminal('a')
-    myGep.addTerminal('b')
-    myGep.addTerminal('c')
-    myGep.initChromosomes(7,60)
+    myGep.initChromosomes(9,100)
     myGep.printChromosomes()
     myGep.openLogFile('log.txt')
     #myGep._decode('++ab+aabbabaa')
     print '\n'
-    myGep.evolution(100)
+    myGep.evolution(200)
     print '\n'
     myGep.closeLogFile()
     print myGep._bestChromosome + '  '+str(myGep._bestFitness)
