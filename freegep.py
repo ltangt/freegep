@@ -11,6 +11,8 @@ class freeGEP:
     _head = 0
     _tail = 0
     _chromosomeLen =0
+    _evalfunc = None
+    _evalfunc_reserved = None
     _funcMaxArg = 0
     _funcList = []
     _funcNameList = []
@@ -33,6 +35,8 @@ class freeGEP:
     _lenInversion = 4
     _lenTransposition = 4
     _logfile = sys.stdout
+    _listeners=[]
+    _listenerparams=[]
     
     # load the dataset filename
     # @param filename: the file name of the dataset
@@ -73,6 +77,14 @@ class freeGEP:
     def addConstants(self, constants):
         map(self.addConstant, constants)
     
+    def addListener(self, listener, param):
+        self._listeners.append(listener)
+        self._listenerparams.append(param)
+        
+    def setEvalfunc(self, evalfunc, reservedparam):
+        self._evalfunc=evalfunc
+        self._evalfunc_reserved=reservedparam
+    
     # initialize the chromosomes
     # @param head: the length of the head of chromosomes            
     def initChromosomes(self, head, num): 
@@ -103,11 +115,20 @@ class freeGEP:
         index = 0
         for exp in self._preExpList:
             fit = 0.0
+            evalcount=0
+            rowindex=0
             for row in self._dataset:
                 expCopy = exp[:]
                 y = self._evaluate(expCopy,row)
-                fit += self._M - float(abs(row[-1] - y))
-            fit /= float(len(self._dataset))
+                if self._evalfunc != None :
+                    err = self._evalfunc(index,rowindex,y,row[-1],self._evalfunc_reserved)
+                else:
+                    err = float(abs(y-row[-1]))
+                if err != None :
+                    evalcount+=1
+                    fit += self._M - err
+                rowindex+=1
+            fit /= float(evalcount)
             chromosome = self._chromosomeList[index]
             if self._fitnesses.has_key(fit) :
                 self._fitnesses[fit].append(chromosome)
@@ -122,30 +143,27 @@ class freeGEP:
     def evolution(self, generation):
         for i in range(generation) :
             self.decode()
-            print >>self._logfile,'evaluate --------------------------'
             self.evaluate()
-            self.printFitnesses()
-            print >>self._logfile,'select ----------------------------'
+            #self.printFitnesses()
             self._select_replicate()
-            print >>self._logfile,'mutation --------------------------'
             self._mutation()
-            print >>self._logfile,'inversion --------------------------'
             self._inversion()
-            print >>self._logfile,'IS transposition--------------------'
             self._transIS()
-            print >>self._logfile,'RIS transposition-------------------'
             self._transRIS()
-            print >>self._logfile,'one-point recombination -----------'
             self._onePointRecombination()
-            print >>self._logfile,'two-point recombination -----------'
             self._twoPointsRecombination()
 
             self._chromosomeList.append(self._bestChromosome)
-            print >>self._logfile,'best '+self._bestChromosome+' '+str(self._bestFitness)
             print 'best '+self._bestChromosome+' '+str(self._bestFitness)
             print 'generating %d' % (i)
-            if self._bestFitness == self._M: break
-        print >>self._logfile,self._bestChromosome +' '+ str(self._bestFitness)
+            if self._bestFitness == self._M: 
+                break
+            if self._listeners != []:
+                listenerindex=0
+                for listener in self._listeners:
+                    listener(self._chromosomeList, self._bestFitness, 
+                             self._listenerparams[listenerindex])
+                    listenerindex+=1
 
     def openLogFile(self, filepath):
         self._logfile = file(filepath, 'w')
@@ -176,7 +194,6 @@ class freeGEP:
         chrlist = chromosome.split('.')
         layers = self._decodeSplitLayers(chrlist)
         preExp = self._decodeGenPreExp(layers,0)
-        #print preExp
         return preExp.split('.')
 
     def _decodeSplitLayers(self, chrlist) :
@@ -185,7 +202,6 @@ class freeGEP:
         layers.append(layer)
         i = 1
         numArg = self._getNumArg(chrlist[0])
-        #print chrlist
         while numArg > 0 :
             layer = []
             nextNumArg = 0
@@ -241,13 +257,11 @@ class freeGEP:
         newchromosomeList = []
         self._bestChromosome = self._fitnesses[fitkeys[-1]][0]
         self._bestFitness = fitkeys[-1]
-        print >>self._logfile,self._bestChromosome
         for i in range(len(self._chromosomeList)-1) :
             r = self._rand.randint(1, count*(count+1)/2-1)
             idx = int(math.sqrt(r)) -1
             chromosome = self._fitnesses[fitkeys[idx]][0]
             newchromosomeList.append(chromosome)
-            # print >>self._logfile,chromosome
         self._chromosomeList = newchromosomeList
 
     def _mutation(self):
@@ -265,7 +279,6 @@ class freeGEP:
                     else:
                         chrlist[pos] = self._randGenTerminal()
                 newchromosomeList.append('.'.join(chrlist)) 
-            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
 
@@ -284,8 +297,6 @@ class freeGEP:
                 newchrlist2 = chrlist2[:pos]+chrlist1[pos:]
                 newchromosomeList.append('.'.join(newchrlist1))
                 newchromosomeList.append('.'.join(newchrlist2))
-            #print >>self._logfile, newchromosomeList[-2]
-            #print >>self._logfile, newchromosomeList[-1]
             index += 2
         while index < len(self._chromosomeList) :
             newchromosomeList.append(self._chromosomeList[index])
@@ -310,8 +321,6 @@ class freeGEP:
                 newchrlist2 = chrlist2[:pos1]+chrlist1[pos1:pos2]+chrlist2[pos2:]
                 newchromosomeList.append('.'.join(newchrlist1))
                 newchromosomeList.append('.'.join(newchrlist2))
-            #print >>self._logfile, newchromosomeList[-2]
-            #print >>self._logfile, newchromosomeList[-1]
             index += 2
         while index < len(self._chromosomeList) :
             newchromosomeList.append(self._chromosomeList[index])
@@ -338,7 +347,6 @@ class freeGEP:
                     chrlist[pos+i] = chrlist[pos+inverselen-i]
                     chrlist[pos+inverselen-i]=t
                 newchromosomeList.append('.'.join(chrlist)) 
-            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
     
@@ -359,7 +367,6 @@ class freeGEP:
                         srcpos-=1
                 del chrlist[self._head:self._head+tranlen]
                 newchromosomeList.append('.'.join(chrlist))
-            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
     
@@ -383,7 +390,6 @@ class freeGEP:
                         srcpos-=1
                     del chrlist[self._head:self._head+tranlen]
                 newchromosomeList.append('.'.join(chrlist))
-            #print >>self._logfile, newchromosomeList[-1]
             index += 1
         self._chromosomeList = newchromosomeList
 
@@ -396,19 +402,15 @@ class freeGEP:
 
 # Add function
 def add(args) :
-    # print str(args[0])+' + '+str(args[1]) + ' = '+str(args[0]+args[1])
     return args[0]+args[1]
 
 def sub(args):
-    # print str(args[0])+' - '+str(args[1]) + ' = '+str(args[0]-args[1])
     return args[0]-args[1]
 
 def mul(args):
-    # print str(args[0])+' * '+str(args[1]) + ' = '+str(args[0]*args[1])
     return args[0]*args[1]
 
 def div(args):
-    # print str(args[0])+' / '+str(args[1]) + ' = '+str(args[0]/args[1])
     if args[1] == 0:
         return 0
     else :
