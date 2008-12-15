@@ -18,6 +18,8 @@ public class FreeGEP {
 	private int _head=0;
 	private int _tail=0;
 	private int _population=0;
+	private int _maxGeneration = 0;
+	private int _currentGeneration = 0;
 	private int _chromosomeLen = 0;
 	private String _bestChromosome ="";
 	private float _bestFitness= -1f;
@@ -41,7 +43,7 @@ public class FreeGEP {
 	}
 	
 	public interface GEPEvalFunc {
-		float eval(int chrindex,int rowindex, float expectval, float actualval);
+		float eval(int chrindex, float[] expectvals, float[] actualvals);
 	}
 	
 	public interface GEPListener {
@@ -115,6 +117,30 @@ public class FreeGEP {
         _evalfunc=evalfunc;
     }
     
+    public int getPopulation() {
+    	return _population;
+    }
+    
+    public int getCurrentGeneration() {
+    	return _currentGeneration;
+    }
+    
+    public int getMaxGeneration() {
+    	return _maxGeneration;
+    }
+    
+    public String getChromosome(int chrindex) {
+    	return _chromosomeList.get(chrindex);
+    }
+    
+    public String getBestChromosome() {
+    	return _bestChromosome;
+    }
+    
+    public float getBestFitness() {
+    	return _bestFitness;
+    }
+    
 	public void initChromosomes(int head, int num) {
 		_head = head;
 		_tail = head * (_maxNumArgsOfFunc - 1) + 1;
@@ -133,11 +159,13 @@ public class FreeGEP {
 			}
 			_chromosomeList.add(chromosome);
 		}
+		_population = num;
 	}
 	
-	public void evolution(int generation) throws Exception {
+	public void evolution(int maxGeneration) throws Exception {
+		_maxGeneration = maxGeneration;
 		checkParameters();
-        for (int i=0; i<generation; i++) {
+        for (_currentGeneration=0; _currentGeneration<_maxGeneration; _currentGeneration++) {
             decode();
             evaluate();
             select_replicate();
@@ -149,7 +177,7 @@ public class FreeGEP {
             twoPointsRecombination();
             _chromosomeList.add(_bestChromosome);
             System.out.println("best "+_bestChromosome+" "+_bestFitness);
-            System.out.println("generating "+i);
+            System.out.println("generating "+_currentGeneration);
             if (_listeners != null && _listeners.size() > 0) {                
             	int index;
             	for (index=0; index<_listeners.size(); index++){
@@ -232,6 +260,33 @@ public class FreeGEP {
         return translateGenMidExp(layers,0);
 	}
 	
+	public float evalute(String chromosome, List<float[]> dataset) {
+		float fit = 0.0f;
+        float err;
+        float[] expects = new float[dataset.size()];
+        float[] targets = new float[dataset.size()];
+		ArrayList<String> exp = decode(chromosome);
+        for (int rowj=0; rowj<dataset.size(); rowj++) {                
+        	ArrayList<String> expCopy = new ArrayList<String>(exp);
+        	float[] row = dataset.get(rowj);
+        	targets[rowj] = row[row.length-1];
+            expects[rowj] = evaluate(expCopy, row);
+        }
+        if (_evalfunc == null) {
+        	for (int rowj=0; rowj<dataset.size(); rowj++) {
+        		float[] row = dataset.get(rowj);
+            	float target = row[row.length-1];
+            	float y = expects[rowj];
+                err = Math.abs(y-target);
+                fit += _M - err;
+        	}
+            fit /= (float)(dataset.size());
+        }else {
+        	fit = _evalfunc.eval(0, expects, targets);
+        }
+        return fit;
+	}
+	
 	private String translateGenMidExp(List<ArrayList<String>> layers, int layerindex) {
         if (layerindex >= layers.size())
             return "";
@@ -264,33 +319,34 @@ public class FreeGEP {
 
     private void evaluate() {
         _fitnesses.clear();
-        int index = 0;
+        float[] expects = new float[_dataset.size()];
+        float[] targets = new float[_dataset.size()];
         for (int expIndex=0; expIndex<_preExpList.size(); expIndex++) {
             float fit = 0.0f;
             float err;
-            int evalcount=0;
             ArrayList<String> exp=_preExpList.get(expIndex);
             for (int rowj=0; rowj<_dataset.size(); rowj++) {                
             	ArrayList<String> expCopy = new ArrayList<String>(exp);
             	float[] row = _dataset.get(rowj);
-            	float target = row[row.length-1];
-                float y = evaluate(expCopy, row);
-                if (_evalfunc != null)
-                    err = _evalfunc.eval(index,rowj,y, target);
-                else {
-                    err = Math.abs(y-target)/(Math.abs(target)+1);
-                }
-                if (err != Float.NaN) {
-                    evalcount +=1;
-                    fit += _M - err;
-                }
+            	targets[rowj] = row[row.length-1];
+                expects[rowj] = evaluate(expCopy, row);
             }
-            fit /= (float)(evalcount);
-            String chromosome = _chromosomeList.get(index);
+            if (_evalfunc == null) {
+            	for (int rowj=0; rowj<_dataset.size(); rowj++) {
+            		float[] row = _dataset.get(rowj);
+                	float target = row[row.length-1];
+                	float y = expects[rowj];
+                    err = Math.abs(y-target);
+                    fit += _M - err;
+            	}
+                fit /= (float)(_dataset.size());
+            }else {
+            	fit = _evalfunc.eval(expIndex, expects, targets);
+            }
+            String chromosome = _chromosomeList.get(expIndex);
             if (_fitnesses.containsKey(fit) == false) 
                 _fitnesses.put(fit, new ArrayList<String>());
             _fitnesses.get(fit).add(chromosome);
-            index += 1;
         }
     }
 	
