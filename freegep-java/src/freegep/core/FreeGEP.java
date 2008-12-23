@@ -63,6 +63,19 @@ public class FreeGEP {
 		_listeners = new ArrayList<GEPListener>();
 	}
 	
+	public void clearAll() {
+		_dataset.clear();
+		_funcNameList.clear();
+		_funcMap.clear();
+		_funcNumArgs.clear();
+		_chromosomeList.clear();
+		_preExpList.clear();
+		_fitnesses.clear();
+		_evalfunc = null;
+		_constants = null;	
+		clearListeners();
+	}
+	
 	public boolean loadfromfile(String filename) throws IOException {
 		FileInputStream fis = new FileInputStream(filename);
 		BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
@@ -111,6 +124,10 @@ public class FreeGEP {
 	
 	public void addListener(GEPListener listener) {
         _listeners.add(listener);
+	}
+	
+	public void clearListeners() {
+		_listeners.clear();
 	}
         
     public void setEvalfunc(GEPEvalFunc evalfunc) {
@@ -258,6 +275,11 @@ public class FreeGEP {
         String[] chrlist = chromosome.split("[.]");
         List<ArrayList<String>> layers = decodeSplitLayers(chrlist);
         return translateGenMidExp(layers,0);
+	}
+	
+	public float evalute(String chromosome, float[] row) {
+		ArrayList<String> exp = decode(chromosome);
+		return evaluate(exp, row);
 	}
 	
 	public float evalute(String chromosome, List<float[]> dataset) {
