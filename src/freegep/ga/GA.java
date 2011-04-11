@@ -26,7 +26,7 @@ public class GA {
 	private BitSet[] individuals;
 	
 	private List<BitSet> trainingSet;
-	
+	 
 	public GA(int size, float select, float mutation, float singleCross, float doubleCross){
 		individualSize =  size;
 		fraction = select;
