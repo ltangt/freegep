@@ -287,19 +287,21 @@ public class GA {
 		float fitness = 0.0f;
 		
 		for(BitSet instance : trainingSet){
-			boolean classLabel = instance.get(individualLength - 1);
-			if(true == classLabel){	//	individual accept positive class
-				BitSet clone = (BitSet)individual.clone();
-				clone.or(instance);
-				if(true == individual.equals(clone)){
-					++fitness;
+			if(true == individual.get(individualLength - 1)){
+				boolean classLabel = instance.get(individualLength - 1);
+				if(true == classLabel){	//	individual accept positive class
+					BitSet clone = (BitSet)individual.clone();
+					clone.or(instance);
+					if(true == individual.equals(clone)){
+						++fitness;
+					}
 				}
-			}
-			else{	//	individual reject negative class
-				BitSet clone = (BitSet)individual.clone();
-				clone.or(instance);
-				if(false == individual.equals(clone)){
-					++fitness;
+				else{	//	individual reject negative class
+					BitSet clone = (BitSet)individual.clone();
+					clone.or(instance);
+					if(false == individual.equals(clone)){
+						++fitness;
+					}
 				}
 			}
 		}
